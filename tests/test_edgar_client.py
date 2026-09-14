@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from itertools import pairwise
 from threading import Thread
 from unittest.mock import Mock
 
@@ -98,7 +99,7 @@ def test_transient_errors_retry_with_exponential_polite_delay(cache_dir, delays,
     session.get.side_effect = get
     assert client.fetch_json(URL, session) == {"ok": True}
     assert len(attempts) == 4
-    intervals = [attempts[0]] + [b - a for a, b in zip(attempts, attempts[1:])]
+    intervals = [attempts[0]] + [b - a for a, b in pairwise(attempts)]
     assert all(delay >= client.REQUEST_DELAY_SECONDS for delay in intervals)
     assert intervals[2] > intervals[1]
     assert intervals[3] > intervals[2]
