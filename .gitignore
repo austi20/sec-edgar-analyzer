@@ -1,0 +1,30 @@
+# Data
+data/raw/
+data/processed/
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.Rhistory
+.vscode/
+.idea/
+
+# Verification artifacts
+.pytest_cache/
+.pytest_tmp*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,16 @@
+# Two comparable peer sets. Ratios are only meaningful against peers, so keep
+# each set internally comparable -- do not mix banks or insurers in here, their
+# statements use different us-gaap concepts and would break the ratio engine.
+peer_sets:
+  large_cap_software:
+    - MSFT
+    - ORCL
+    - CRM
+    - ADBE
+    - NOW
+  big_box_retail:
+    - WMT
+    - TGT
+    - COST
+    - HD
+    - LOW
