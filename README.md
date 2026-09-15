@@ -1,10 +1,12 @@
 # SEC EDGAR Financial Statement Analyzer (AI-assisted)
 
-## Current implementation (September 14, 2026)
+## Current implementation (September 15, 2026)
 
-Milestone 1, steps 1-2: repository setup and cached HTTP client. The remaining
-modules and company configuration are starter scaffolding for later milestones.
-The analyzer and dashboard are not yet runnable end to end.
+Milestone 1, steps 1-4: repository setup, cached HTTP client, ticker -> CIK
+lookup, and the two peer sets in `config/companies.yml`. `company_facts` (the
+per-filer financial pull) and the parser/ratio/narrate modules are starter
+scaffolding for later milestones. The analyzer and dashboard are not yet
+runnable end to end.
 
 Use Python 3.12 for the pinned project dependencies. From PowerShell:
 
@@ -25,6 +27,15 @@ with make_session() as session:
     cached = fetch_json(url, session)
     assert filing == cached
     print(filing["name"])
+```
+
+Resolve tickers to zero-padded CIKs (also cached, same client):
+
+```python
+from src.edgar_client import ticker_to_cik
+
+lookup = ticker_to_cik()
+print(lookup["MSFT"])  # "0000789019"
 ```
 
 The client identifies requests with the contact in `USER_AGENT`; replace it with

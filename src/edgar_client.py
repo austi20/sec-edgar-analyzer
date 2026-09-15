@@ -107,7 +107,8 @@ def pad_cik(cik: int | str) -> str:
 
 def ticker_to_cik(session: requests.Session | None = None) -> dict[str, str]:
     """Map ticker -> zero-padded CIK from company_tickers.json."""
-    raise NotImplementedError
+    payload = fetch_json(TICKERS_URL, session)
+    return {entry["ticker"]: pad_cik(entry["cik_str"]) for entry in payload.values()}
 
 
 def company_facts(ticker: str, session: requests.Session | None = None) -> dict:

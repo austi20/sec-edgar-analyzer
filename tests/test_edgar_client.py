@@ -182,6 +182,26 @@ def test_corrupt_cache_is_reported(cache_dir, delays):
     assert delays == []
 
 
+def test_ticker_to_cik_maps_and_zero_pads_from_company_tickers_json(cache_dir, delays):
+    session = Mock(spec=requests.Session)
+    payload = {
+        "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+        "1": {"cik_str": 789019, "ticker": "MSFT", "title": "MICROSOFT CORP"},
+    }
+    session.get.return_value = response(payload=payload)
+    assert client.ticker_to_cik(session) == {"AAPL": "0000320193", "MSFT": "0000789019"}
+    assert session.get.call_args.args[0] == client.TICKERS_URL
+    assert cache_path(cache_dir, client.TICKERS_URL).exists()
+
+
+def test_ticker_to_cik_second_call_hits_cache_not_network(cache_dir, delays):
+    session = Mock(spec=requests.Session)
+    session.get.return_value = response(payload={"0": {"cik_str": 1, "ticker": "A", "title": "A Inc"}})
+    client.ticker_to_cik(session)
+    client.ticker_to_cik(session)
+    session.get.assert_called_once()
+
+
 def test_real_http_session_retries_sends_identity_and_reuses_cache(cache_dir, delays):
     identities = []
 
