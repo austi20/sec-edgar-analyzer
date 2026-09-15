@@ -14,6 +14,9 @@ venv/
 # Streamlit
 .streamlit/secrets.toml
 
+# Local planning notes
+PLAN.md
+
 # OS / editor
 .DS_Store
 Thumbs.db
