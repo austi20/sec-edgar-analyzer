@@ -1,22 +1,83 @@
-# SEC EDGAR Financial Statement Analyzer (AI-assisted)
+# SEC EDGAR Financial Statement Analyzer
 
-Pulls 10-K/10-Q XBRL filings for two peer sets of five public companies from the SEC EDGAR API,
-normalizes inconsistently tagged `us-gaap` concepts into a tidy dataset, computes standard
-financial ratios (margins, liquidity, leverage, DuPont ROE), and narrates the results with a
-local LLM that is constrained to numbers the pipeline actually computed. Ships as a deployed
-Streamlit dashboard.
+[![tests](https://github.com/austi20/sec-edgar-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/austi20/sec-edgar-analyzer/actions/workflows/tests.yml)
 
-**Due:** Sunday, October 11, 2026 &nbsp;|&nbsp; **Estimated effort:** ~22 hours &nbsp;|&nbsp; **Type:** portfolio project
+Public companies file their financials with the SEC in XBRL, so in theory
+comparing two of them is easy. In practice they tag the same line item three
+different ways, restate it a year later, and bury it in a JSON blob holding a
+decade of everything else they ever reported. This project pulls those filings,
+normalizes the tags into one clean table, computes the ratios an analyst
+actually uses, and has a local LLM narrate the result without letting it invent
+a single number.
 
-## Current implementation (September 15, 2026)
+## Where this is now
 
-Milestone 1, steps 1-4: repository setup, cached HTTP client, ticker -> CIK
-lookup, and the two peer sets in `config/companies.yml`. `company_facts` (the
-per-filer financial pull) and the parser/ratio/narrate modules are starter
-scaffolding for later milestones. The analyzer and dashboard are not yet
-runnable end to end.
+The SEC client is built and tested. Everything downstream of it is scaffolding,
+so the analyzer does not yet run end to end and the dashboard does not yet
+render anything.
 
-Use Python 3.12 for the pinned project dependencies. From PowerShell:
+Working today:
+
+- `src/edgar_client.py`, a cached and rate limited client for the EDGAR REST
+  APIs, plus the ticker to CIK lookup.
+- `config/companies.yml`, the two peer sets the analysis will run over.
+- 27 tests passing, 3 skipped because they cover modules that are still stubs.
+
+Not built yet:
+
+- `company_facts()`, the per filer financial pull.
+- `src/parse.py`, which flattens the filings and handles tag aliasing and
+  restatements.
+- `src/ratios.py`, every ratio and the DuPont decomposition.
+- `src/narrate.py`, the LLM layer.
+- `app/streamlit_app.py`, the dashboard.
+
+I would rather say that plainly than have you clone it and find
+`NotImplementedError`.
+
+## The problems this has to solve
+
+These are the parts worth talking about, and they are why the project is more
+than a loop over an API.
+
+**The SEC will block you.** Requests need a descriptive User Agent carrying a
+real contact email. The client waits at least 0.15 seconds between calls,
+retries 429 and 503 up to three times with exponential backoff, and honors
+`Retry-After` when the response sends one.
+
+**CIKs need zero padding to 10 digits** in URLs, so Apple is 320193 in one place
+and `CIK0000320193` in another. Getting this wrong costs an afternoon.
+
+**The same number has several names.** Revenue shows up as
+`RevenueFromContractWithCustomerExcludingAssessedTax`, `Revenues`, or
+`SalesRevenueNet` depending on the filer and the year. The parser resolves a
+priority list per metric rather than trusting one tag.
+
+**Companies restate.** The same period end appears more than once with different
+values, so the rule is to keep whichever version was filed most recently.
+
+**Ratios only mean something against peers.** The two peer sets are each
+internally comparable on purpose. Banks and insurers are deliberately excluded,
+because their statements use different `us-gaap` concepts and would quietly
+break the ratio engine rather than error out.
+
+**The LLM is not allowed to do arithmetic.** It receives a table of numbers the
+deterministic pipeline already computed and narrates those. Every figure in its
+output gets checked against that table before the summary is cached, and the
+deployed app reads cached summaries, so it never needs Ollama or a GPU at
+request time.
+
+## Caching
+
+Every successful response is written atomically to `data/raw/`, keyed by a
+SHA256 of the full URL. A cache hit makes no HTTP request at all. Entries never
+expire, so delete the file to refresh it. Writes go through a temp file and get
+renamed into place, which means an interrupted write cannot leave behind a
+corrupt file that later reads as a valid cache hit.
+
+## Running it
+
+Use Python 3.12, which is what the pinned dependencies target.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -24,7 +85,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Fetch one SEC JSON resource (the second call uses the disk cache):
+Fetch one SEC resource, where the second call comes from the cache:
 
 ```python
 from src.edgar_client import fetch_json, make_session
@@ -37,7 +98,7 @@ with make_session() as session:
     print(filing["name"])
 ```
 
-Resolve tickers to zero-padded CIKs (also cached, same client):
+Resolve tickers to padded CIKs, through the same cache:
 
 ```python
 from src.edgar_client import ticker_to_cik
@@ -46,32 +107,24 @@ lookup = ticker_to_cik()
 print(lookup["MSFT"])  # "0000789019"
 ```
 
-The client identifies requests with the contact in `USER_AGENT`; replace it with
-your own name and email when reusing this project. It waits at least 0.15 seconds
-before every request and retries HTTP 429/503 up to three times with exponential
-backoff, honoring `Retry-After`. Requests have a 30-second timeout. Use sequential
-calls; this small client does not coordinate rate limits across processes or threads.
-See the [SEC fair access policy](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
+`USER_AGENT` in `src/edgar_client.py` carries my name and email, per the
+[SEC fair access policy](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
+Replace it with your own if you reuse this. Keep calls sequential, since this
+client does not coordinate rate limits across processes or threads.
 
-Successful JSON responses are written atomically to `data/raw/<SHA256-of-URL>.json`.
-Cache hits make no HTTP request. Cache entries do not expire; remove the matching
-file to refresh it. HTTP, timeout, invalid JSON, corrupt cache, and filesystem
-errors propagate to the caller. Caller-owned sessions remain open.
+## What is left
 
-The skipped parser and ratio tests belong to later milestones. `tasks.bat data`
-is reserved for those milestones; use the Python example above for today's client.
+In rough order:
 
----
+1. Finish `company_facts()` so a ticker returns its full XBRL history.
+2. Flatten those filings into one tidy long table, resolving tag aliases and
+   dropping restated duplicates.
+3. Build the ratio engine, including the DuPont breakdown of ROE into net
+   margin, asset turnover and the equity multiplier, which is the part that
+   answers why one company's return beats another's.
+4. Add the narration layer and its number verification.
+5. Put a Streamlit dashboard on top and deploy it.
 
-## Implementation plan
+## License
 
-| Milestone | Focus | Target week | Est. hours | Status |
-|---|---|---|---|---|
-| 1 | Repo setup, cached client, ticker -> CIK lookup, peer sets | Sept 14 | ~4 | Steps 1-4 done; `company_facts` pull pending |
-| 2 | Normalize XBRL filings into a tidy table | Sept 21 | ~5 | Not started |
-| 3 | Ratio engine + DuPont ROE decomposition | Sept 28 | ~4 | Not started |
-| 4 | Local LLM narrative layer (Ollama, number-verified) | Oct 5 | ~6 | Not started |
-| 5 | Streamlit dashboard, deploy, write-up | Oct 11 | ~3 | Not started |
-
-Detailed per-milestone tasks, resource links, and scheduling notes are kept in a local
-`PLAN.md` (not tracked in this repo).
+MIT.
