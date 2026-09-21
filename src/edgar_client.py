@@ -111,5 +111,6 @@ def ticker_to_cik(session: requests.Session | None = None) -> dict[str, str]:
     return {entry["ticker"]: pad_cik(entry["cik_str"]) for entry in payload.values()}
 
 
-def company_facts(ticker: str, session: requests.Session | None = None) -> dict:
-    raise NotImplementedError
+def company_facts(cik: int | str, session: requests.Session | None = None) -> dict:
+    """Every XBRL fact a filer has reported, keyed by its zero-padded CIK."""
+    return fetch_json(COMPANY_FACTS_URL.format(cik=pad_cik(cik)), session)

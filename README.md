@@ -19,13 +19,14 @@ render anything.
 Working today:
 
 - `src/edgar_client.py`, a cached and rate limited client for the EDGAR REST
-  APIs, plus the ticker to CIK lookup.
+  APIs, the ticker to CIK lookup, and `company_facts()`, the per filer pull.
+  All 10 tickers in `config/companies.yml` have been fetched and cached, from
+  Costco's 460 us-gaap concepts up to Salesforce's 691.
 - `config/companies.yml`, the two peer sets the analysis will run over.
-- 27 tests passing, 3 skipped because they cover modules that are still stubs.
+- 31 tests passing, 3 skipped because they cover modules that are still stubs.
 
 Not built yet:
 
-- `company_facts()`, the per filer financial pull.
 - `src/parse.py`, which flattens the filings and handles tag aliasing and
   restatements.
 - `src/ratios.py`, every ratio and the DuPont decomposition.
@@ -107,6 +108,17 @@ lookup = ticker_to_cik()
 print(lookup["MSFT"])  # "0000789019"
 ```
 
+Pull everything a filer has ever reported. That runs 3 to 5 MB per company, so
+let it land in the cache once and work off disk after that:
+
+```python
+from src.edgar_client import company_facts, make_session, ticker_to_cik
+
+with make_session() as session:
+    facts = company_facts(ticker_to_cik(session)["MSFT"], session)
+    print(facts["entityName"], len(facts["facts"]["us-gaap"]), "us-gaap concepts")
+```
+
 `USER_AGENT` in `src/edgar_client.py` carries my name and email, per the
 [SEC fair access policy](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
 Replace it with your own if you reuse this. Keep calls sequential, since this
@@ -116,14 +128,13 @@ client does not coordinate rate limits across processes or threads.
 
 In rough order:
 
-1. Finish `company_facts()` so a ticker returns its full XBRL history.
-2. Flatten those filings into one tidy long table, resolving tag aliases and
+1. Flatten the cached filings into one tidy long table, resolving tag aliases and
    dropping restated duplicates.
-3. Build the ratio engine, including the DuPont breakdown of ROE into net
+2. Build the ratio engine, including the DuPont breakdown of ROE into net
    margin, asset turnover and the equity multiplier, which is the part that
    answers why one company's return beats another's.
-4. Add the narration layer and its number verification.
-5. Put a Streamlit dashboard on top and deploy it.
+3. Add the narration layer and its number verification.
+4. Put a Streamlit dashboard on top and deploy it.
 
 ## License
 

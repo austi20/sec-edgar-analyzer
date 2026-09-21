@@ -228,3 +228,22 @@ def test_real_http_session_retries_sends_identity_and_reuses_cache(cache_dir, de
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("cik", [320193, "320193", "0000320193"])
+def test_company_facts_zero_pads_cik_into_the_url(cache_dir, delays, cik):
+    session = Mock(spec=requests.Session)
+    session.get.return_value = response(payload={"cik": 320193, "facts": {}})
+    assert client.company_facts(cik, session) == {"cik": 320193, "facts": {}}
+    assert session.get.call_args.args[0] == URL
+    assert cache_path(cache_dir).exists()
+
+
+def test_company_facts_second_call_hits_cache_not_network(cache_dir, delays):
+    session = Mock(spec=requests.Session)
+    session.get.return_value = response(payload={"cik": 320193, "facts": {}})
+    client.company_facts(320193, session)
+    sleeps_after_first_call = len(delays)
+    client.company_facts(320193, session)
+    session.get.assert_called_once()
+    assert len(delays) == sleeps_after_first_call
