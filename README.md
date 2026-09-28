@@ -23,12 +23,16 @@ Working today:
   All 10 tickers in `config/companies.yml` have been fetched and cached, from
   Costco's 460 us-gaap concepts up to Salesforce's 691.
 - `config/companies.yml`, the two peer sets the analysis will run over.
-- 31 tests passing, 3 skipped because they cover modules that are still stubs.
+- `load_all_facts()` in `src/parse.py`, which flattens all 10 cached filings
+  into one long table of 261,095 us-gaap facts: ticker, concept, unit, fiscal
+  year and period, form, period start and end, filed date, and value. Period
+  start matters because a 10-Q reports both the quarter and the year to date
+  under the same period end.
+- 35 tests passing, 3 skipped because they cover work that is still stubbed.
 
 Not built yet:
 
-- `src/parse.py`, which flattens the filings and handles tag aliasing and
-  restatements.
+- Tag aliasing and restatement handling in `src/parse.py`.
 - `src/ratios.py`, every ratio and the DuPont decomposition.
 - `src/narrate.py`, the LLM layer.
 - `app/streamlit_app.py`, the dashboard.
@@ -128,8 +132,7 @@ client does not coordinate rate limits across processes or threads.
 
 In rough order:
 
-1. Flatten the cached filings into one tidy long table, resolving tag aliases and
-   dropping restated duplicates.
+1. Resolve tag aliases in the long table and drop restated duplicates.
 2. Build the ratio engine, including the DuPont breakdown of ROE into net
    margin, asset turnover and the equity multiplier, which is the part that
    answers why one company's return beats another's.
