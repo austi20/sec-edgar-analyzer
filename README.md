@@ -12,9 +12,9 @@ a single number.
 
 ## Where this is now
 
-The SEC client is built and tested. Everything downstream of it is scaffolding,
-so the analyzer does not yet run end to end and the dashboard does not yet
-render anything.
+The SEC client and the parser are built and tested. Everything downstream of
+them is scaffolding, so the analyzer does not yet run end to end and the
+dashboard does not yet render anything.
 
 Working today:
 
@@ -28,11 +28,18 @@ Working today:
   year and period, form, period start and end, filed date, and value. Period
   start matters because a 10-Q reports both the quarter and the year to date
   under the same period end.
-- 35 tests passing, 3 skipped because they cover work that is still stubbed.
+- `resolve_concepts()` and `drop_restatements()` in `src/parse.py`. The first
+  maps raw tags onto the 14 internal metrics, taking the highest priority tag
+  available for each period, so a filer that changed tags mid history still gets
+  one unbroken series. The second keeps the latest filed value of each fact. Run
+  over the 10 cached filers they cut the table to 10,683 facts with no
+  duplicates left, and give the same result in either order.
+- 47 tests passing, 1 skipped because it covers work that is still stubbed.
 
 Not built yet:
 
-- Tag aliasing and restatement handling in `src/parse.py`.
+- Form filtering (10-K for annual, 10-Q for quarterly) and writing the
+  processed table to disk.
 - `src/ratios.py`, every ratio and the DuPont decomposition.
 - `src/narrate.py`, the LLM layer.
 - `app/streamlit_app.py`, the dashboard.
@@ -56,7 +63,7 @@ and `CIK0000320193` in another. Getting this wrong costs an afternoon.
 **The same number has several names.** Revenue shows up as
 `RevenueFromContractWithCustomerExcludingAssessedTax`, `Revenues`, or
 `SalesRevenueNet` depending on the filer and the year. The parser resolves a
-priority list per metric rather than trusting one tag.
+priority list per metric, period by period, rather than trusting one tag.
 
 **Companies restate.** The same period end appears more than once with different
 values, so the rule is to keep whichever version was filed most recently.
@@ -132,7 +139,7 @@ client does not coordinate rate limits across processes or threads.
 
 In rough order:
 
-1. Resolve tag aliases in the long table and drop restated duplicates.
+1. Filter the resolved table by form and write it to `data/processed/`.
 2. Build the ratio engine, including the DuPont breakdown of ROE into net
    margin, asset turnover and the equity multiplier, which is the part that
    answers why one company's return beats another's.
