@@ -12,9 +12,9 @@ a single number.
 
 ## Where this is now
 
-The SEC client and the parser are built and tested. Everything downstream of
-them is scaffolding, so the analyzer does not yet run end to end and the
-dashboard does not yet render anything.
+The SEC client, the parser and the DuPont core of the ratio engine are built and
+tested. The rest is scaffolding, so the analyzer does not yet run end to end and
+the dashboard does not yet render anything.
 
 Working today:
 
@@ -34,13 +34,20 @@ Working today:
   one unbroken series. The second keeps the latest filed value of each fact. Run
   over the 10 cached filers they cut the table to 10,683 facts with no
   duplicates left, and give the same result in either order.
-- 47 tests passing, 1 skipped because it covers work that is still stubbed.
+- `net_margin()`, `asset_turnover()`, `equity_multiplier()`,
+  `return_on_equity()` and `dupont()` in `src/ratios.py`. `dupont()` splits ROE
+  into its three drivers, and the tests check that their product matches ROE
+  computed directly, including for a loss making company and one with negative
+  equity. On the latest year of all 10 cached filers the two agree to floating
+  point.
+- 55 tests passing.
 
 Not built yet:
 
 - Form filtering (10-K for annual, 10-Q for quarterly) and writing the
   processed table to disk.
-- `src/ratios.py`, every ratio and the DuPont decomposition.
+- The rest of `src/ratios.py`: gross and operating margin, ROA, liquidity,
+  leverage, cash flow and growth ratios, and peer percentile rank.
 - `src/narrate.py`, the LLM layer.
 - `app/streamlit_app.py`, the dashboard.
 
@@ -140,9 +147,10 @@ client does not coordinate rate limits across processes or threads.
 In rough order:
 
 1. Filter the resolved table by form and write it to `data/processed/`.
-2. Build the ratio engine, including the DuPont breakdown of ROE into net
-   margin, asset turnover and the equity multiplier, which is the part that
-   answers why one company's return beats another's.
+2. Finish the ratio engine. The DuPont breakdown of ROE into net margin, asset
+   turnover and the equity multiplier is done, which is the part that answers
+   why one company's return beats another's. Margins, ROA, liquidity, leverage,
+   cash flow, growth and peer rank are not.
 3. Add the narration layer and its number verification.
 4. Put a Streamlit dashboard on top and deploy it.
 

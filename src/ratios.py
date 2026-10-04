@@ -14,7 +14,7 @@ def operating_margin(operating_income: float, revenue: float) -> float:
 
 
 def net_margin(net_income: float, revenue: float) -> float:
-    raise NotImplementedError
+    return net_income / revenue
 
 
 def return_on_assets(net_income: float, assets: float) -> float:
@@ -22,7 +22,7 @@ def return_on_assets(net_income: float, assets: float) -> float:
 
 
 def return_on_equity(net_income: float, equity: float) -> float:
-    raise NotImplementedError
+    return net_income / equity
 
 
 # --- Liquidity -------------------------------------------------------------
@@ -47,11 +47,15 @@ def interest_coverage(operating_income: float, interest_expense: float) -> float
     raise NotImplementedError
 
 
+def equity_multiplier(assets: float, equity: float) -> float:
+    return assets / equity
+
+
 # --- Efficiency ------------------------------------------------------------
 
 
 def asset_turnover(revenue: float, assets: float) -> float:
-    raise NotImplementedError
+    return revenue / assets
 
 
 # --- Cash ------------------------------------------------------------------
@@ -80,8 +84,19 @@ def dupont(net_income: float, revenue: float, assets: float, equity: float) -> d
 
     The most interview-useful function in the repo: it answers *why* one
     company's return beats another's.
+
+    `roe` is the product of the three drivers, so it equals return_on_equity()
+    up to floating point.
     """
-    raise NotImplementedError
+    margin = net_margin(net_income, revenue)
+    turnover = asset_turnover(revenue, assets)
+    leverage = equity_multiplier(assets, equity)
+    return {
+        "net_margin": margin,
+        "asset_turnover": turnover,
+        "equity_multiplier": leverage,
+        "roe": margin * turnover * leverage,
+    }
 
 
 def peer_percentile_rank(values, within: str = "peer_set"):
