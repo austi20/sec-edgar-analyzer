@@ -34,18 +34,25 @@ Working today:
   one unbroken series. The second keeps the latest filed value of each fact. Run
   over the 10 cached filers they cut the table to 10,683 facts with no
   duplicates left, and give the same result in either order.
+- `build_table()` in `src/parse.py`, which splits the resolved facts into an
+  annual table from 10-Ks and a quarterly one from 10-Qs, labels each fact with
+  the fiscal year it actually covers, and keeps one value per company, metric
+  and period. `python -m src.parse` writes them to
+  `data/processed/annual.parquet` (2,047 facts) and `quarterly.parquet` (5,717).
 - `net_margin()`, `asset_turnover()`, `equity_multiplier()`,
   `return_on_equity()` and `dupont()` in `src/ratios.py`. `dupont()` splits ROE
   into its three drivers, and the tests check that their product matches ROE
   computed directly, including for a loss making company and one with negative
   equity. On the latest year of all 10 cached filers the two agree to floating
   point.
-- 55 tests passing.
+- 67 tests passing.
 
 Not built yet:
 
-- Form filtering (10-K for annual, 10-Q for quarterly) and writing the
-  processed table to disk.
+- Quarterly cash flow. Most filers only report operating cash flow and capex
+  year to date, so the quarterly table has them for Q1 and rarely after.
+  Getting Q2 and Q3 means subtracting one year to date figure from the next.
+  The annual table is complete, and the ratios run on annual numbers.
 - The rest of `src/ratios.py`: gross and operating margin, ROA, liquidity,
   leverage, cash flow and growth ratios, and peer percentile rank.
 - `src/narrate.py`, the LLM layer.
@@ -74,6 +81,22 @@ priority list per metric, period by period, rather than trusting one tag.
 
 **Companies restate.** The same period end appears more than once with different
 values, so the rule is to keep whichever version was filed most recently.
+
+**The fiscal year on a fact belongs to the filing, not the fact.** Home Depot's
+year ending January 2024 shows up three times, labeled 2023, 2024 and 2025,
+because each later 10-K repeats it as a comparative. Even a filing's own year is
+sometimes mistagged: Salesforce's 10-K for the year ending January 2021 says
+2020. So the parser takes each company's usual gap between its fiscal year and
+the calendar year a period ends in, and applies that, letting the majority
+outvote the odd bad filing. One Walmart 10-K also tags a cash balance nine
+months after the date it was filed. A period cannot end after its own filing,
+so those facts are dropped.
+
+**Annual and quarterly have to be split before deduplicating.** A year end
+balance sheet gets repeated in the next three 10-Qs. Keep the latest filing
+first and the 10-Q copy wins, and the year end quietly drops out of the annual
+table. The form alone is not enough either: some 10-Ks also tag a quarter and
+every 10-Q tags year to date, so the parser checks the length of each period.
 
 **Ratios only mean something against peers.** The two peer sets are each
 internally comparable on purpose. Banks and insurers are deliberately excluded,
@@ -137,6 +160,13 @@ with make_session() as session:
     print(facts["entityName"], len(facts["facts"]["us-gaap"]), "us-gaap concepts")
 ```
 
+Build the annual and quarterly tables for all 10 filers. The first run pulls
+around 43 MB from the SEC into the cache; after that it works off disk:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.parse
+```
+
 `USER_AGENT` in `src/edgar_client.py` carries my name and email, per the
 [SEC fair access policy](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
 Replace it with your own if you reuse this. Keep calls sequential, since this
@@ -146,13 +176,12 @@ client does not coordinate rate limits across processes or threads.
 
 In rough order:
 
-1. Filter the resolved table by form and write it to `data/processed/`.
-2. Finish the ratio engine. The DuPont breakdown of ROE into net margin, asset
+1. Finish the ratio engine. The DuPont breakdown of ROE into net margin, asset
    turnover and the equity multiplier is done, which is the part that answers
    why one company's return beats another's. Margins, ROA, liquidity, leverage,
    cash flow, growth and peer rank are not.
-3. Add the narration layer and its number verification.
-4. Put a Streamlit dashboard on top and deploy it.
+2. Add the narration layer and its number verification.
+3. Put a Streamlit dashboard on top and deploy it.
 
 ## License
 

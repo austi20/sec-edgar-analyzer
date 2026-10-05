@@ -7,9 +7,16 @@ import pandas as pd
 import pytest
 
 from src.parse import (
+    ANNUAL_DAYS,
+    ANNUAL_FORMS,
     COLUMNS,
+    QUARTER_DAYS,
+    QUARTERLY_FORMS,
+    build_table,
     drop_restatements,
+    filter_form,
     flatten_company_facts,
+    label_fiscal_periods,
     resolve_concepts,
 )
 
@@ -188,3 +195,188 @@ def test_alias_priority_beats_recency_but_latest_filing_wins_within_an_alias(ste
         df = step(df)
 
     assert list(df["value"]) == [95]
+
+
+# 13 week quarter inside a Q2 10-Q
+QUARTER = {
+    "form": "10-Q",
+    "fiscal_period": "Q2",
+    "period_start": pd.Timestamp("2019-05-06"),
+    "period_end": pd.Timestamp("2019-08-04"),
+    "filed": pd.Timestamp("2019-09-01"),
+}
+
+
+@pytest.mark.parametrize(
+    ("forms", "days", "kept"),
+    [(ANNUAL_FORMS, ANNUAL_DAYS, ["10-K", "10-K/A"]), (QUARTERLY_FORMS, QUARTER_DAYS, ["10-Q", "10-Q/A"])],
+    ids=["annual", "quarterly"],
+)
+def test_filter_form_keeps_only_the_requested_forms(forms, days, kept):
+    # instants, so duration plays no part here
+    df = make_facts(
+        *[{"concept": "assets", "value": 1, "form": form, "period_start": pd.NaT}
+          for form in ["10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "DEF 14A"]]
+    )
+
+    out = filter_form(df, forms, days)
+
+    assert sorted(out["form"]) == kept
+
+
+@pytest.mark.parametrize("start", ["2019-02-04", "2019-01-28"], ids=["52-week", "53-week"])
+def test_filter_form_annual_keeps_full_years_and_drops_a_quarter_tagged_in_the_10k(start):
+    df = make_facts(
+        {"concept": "revenue", "value": 100, "period_start": pd.Timestamp(start)},
+        {"concept": "revenue", "value": 25, "period_start": pd.Timestamp("2019-11-04")},
+    )
+
+    out = filter_form(df, ANNUAL_FORMS, ANNUAL_DAYS)
+
+    assert list(out["value"]) == [100]
+
+
+def test_filter_form_quarterly_drops_year_to_date():
+    df = make_facts(
+        {**QUARTER, "concept": "revenue", "value": 30},
+        {**QUARTER, "concept": "revenue", "value": 60, "period_start": pd.Timestamp("2019-02-04")},
+    )
+
+    out = filter_form(df, QUARTERLY_FORMS, QUARTER_DAYS)
+
+    assert list(out["value"]) == [30]
+
+
+def test_label_moves_a_comparative_to_the_year_it_was_reported_for():
+    fy2022 = {
+        "concept": "revenue",
+        "value": 157,
+        "fiscal_year": 2022,
+        "period_start": pd.Timestamp("2022-01-31"),
+        "period_end": pd.Timestamp("2023-01-29"),
+        "filed": pd.Timestamp("2023-03-15"),
+    }
+    fy2023 = {
+        "concept": "revenue",
+        "value": 152,
+        "fiscal_year": 2023,
+        "period_start": pd.Timestamp("2023-01-30"),
+        "period_end": pd.Timestamp("2024-01-28"),
+        "filed": pd.Timestamp("2024-03-13"),
+    }
+    # fiscal 2022 again, as the prior year column of the fiscal 2023 10-K
+    comparative = {**fy2022, "fiscal_year": 2023, "filed": fy2023["filed"]}
+
+    out = label_fiscal_periods(make_facts(fy2022, fy2023, comparative))
+
+    by_end = out.groupby("period_end")["fiscal_year"].unique()
+    assert list(by_end[pd.Timestamp("2023-01-29")]) == [2022]
+    assert list(by_end[pd.Timestamp("2024-01-28")]) == [2023]
+
+
+def test_label_drops_the_prior_year_end_balance_sheet_inside_a_10q():
+    q2 = {**QUARTER, "concept": "revenue", "value": 30}
+    prior_year_end = {
+        **QUARTER,
+        "concept": "assets",
+        "value": 500,
+        "period_start": pd.NaT,
+        "period_end": pd.Timestamp("2019-02-03"),
+    }
+
+    out = label_fiscal_periods(make_facts(q2, prior_year_end))
+
+    assert list(out["concept"]) == ["revenue"]
+
+
+def test_build_table_keeps_a_year_end_balance_the_next_10q_reports_again():
+    year_end = {"concept": "assets", "value": 500, "period_start": pd.NaT}
+    # Q1 10-Q filed later: its own quarter end, plus the year end as comparative
+    q1 = {
+        "concept": "assets",
+        "value": 520,
+        "form": "10-Q",
+        "fiscal_year": 2021,
+        "fiscal_period": "Q1",
+        "period_start": pd.NaT,
+        "period_end": pd.Timestamp("2020-05-03"),
+        "filed": pd.Timestamp("2020-06-01"),
+    }
+    year_end_again = {**q1, "value": 500, "period_end": pd.Timestamp("2020-02-02")}
+
+    out = build_table(make_facts(year_end, q1, year_end_again), ANNUAL_FORMS, ANNUAL_DAYS)
+
+    assert list(out["form"]) == ["10-K"]
+    assert list(out["value"]) == [500]
+    assert list(out["fiscal_year"]) == [2020]
+
+
+def annual_revenue(year_end: str, fiscal_year: int, value: float, filed: str) -> dict:
+    end = pd.Timestamp(year_end)
+    return {
+        "concept": "revenue",
+        "value": value,
+        "fiscal_year": fiscal_year,
+        "period_start": end - pd.Timedelta(days=364),
+        "period_end": end,
+        "filed": pd.Timestamp(filed),
+    }
+
+
+def test_label_outvotes_a_filing_that_tagged_the_wrong_fiscal_year():
+    # CRM calls the year ending Jan 2021 fiscal 2021, but that 10-K says 2020
+    df = make_facts(
+        annual_revenue("2020-01-31", 2020, 17, "2020-03-05"),
+        annual_revenue("2021-01-31", 2020, 21, "2021-03-17"),
+        annual_revenue("2022-01-31", 2022, 26, "2022-03-11"),
+    )
+
+    out = label_fiscal_periods(df)
+
+    assert list(out.sort_values("period_end")["fiscal_year"]) == [2020, 2021, 2022]
+
+
+def test_build_table_labels_a_10k_tagged_q4_as_fiscal_year():
+    df = make_facts({"concept": "revenue", "value": 100, "fiscal_period": "Q4"})
+
+    out = build_table(df, ANNUAL_FORMS, ANNUAL_DAYS)
+
+    assert list(out["fiscal_period"]) == ["FY"]
+
+
+def test_build_table_collapses_a_quarter_tagged_with_two_start_dates():
+    original = {**QUARTER, "concept": "revenue", "value": 30}
+    # next year's comparative starts the same quarter one day later
+    comparative = {
+        **original,
+        "period_start": pd.Timestamp("2019-05-07"),
+        "fiscal_year": 2021,
+        "filed": pd.Timestamp("2020-09-01"),
+    }
+    next_q2 = {
+        **original,
+        "value": 33,
+        "fiscal_year": 2021,
+        "period_start": pd.Timestamp("2020-05-04"),
+        "period_end": pd.Timestamp("2020-08-02"),
+        "filed": pd.Timestamp("2020-09-01"),
+    }
+
+    out = build_table(make_facts(original, comparative, next_q2), QUARTERLY_FORMS, QUARTER_DAYS)
+
+    assert list(out["fiscal_year"]) == [2020, 2021]
+    assert list(out["value"]) == [30, 33]
+
+
+def test_filter_form_drops_a_period_that_ends_after_its_filing():
+    # WMT's fiscal 2012 10-K tagged cash at 2012-12-31, a typo for 2012-01-31
+    typo = {
+        "concept": "cash",
+        "value": 6,
+        "period_start": pd.NaT,
+        "period_end": pd.Timestamp("2020-12-31"),
+    }
+
+    out = filter_form(make_facts({"concept": "revenue", "value": 100}, typo), ANNUAL_FORMS, ANNUAL_DAYS)
+
+    assert list(out["concept"]) == ["revenue"]
