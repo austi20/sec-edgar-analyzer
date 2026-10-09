@@ -6,11 +6,11 @@ from __future__ import annotations
 
 
 def gross_margin(gross_profit: float, revenue: float) -> float:
-    raise NotImplementedError
+    return gross_profit / revenue
 
 
 def operating_margin(operating_income: float, revenue: float) -> float:
-    raise NotImplementedError
+    return operating_income / revenue
 
 
 def net_margin(net_income: float, revenue: float) -> float:
@@ -18,7 +18,7 @@ def net_margin(net_income: float, revenue: float) -> float:
 
 
 def return_on_assets(net_income: float, assets: float) -> float:
-    raise NotImplementedError
+    return net_income / assets
 
 
 def return_on_equity(net_income: float, equity: float) -> float:
@@ -29,22 +29,22 @@ def return_on_equity(net_income: float, equity: float) -> float:
 
 
 def current_ratio(assets_current: float, liabilities_current: float) -> float:
-    raise NotImplementedError
+    return assets_current / liabilities_current
 
 
 def quick_ratio(assets_current: float, inventory: float, liabilities_current: float) -> float:
-    raise NotImplementedError
+    return (assets_current - inventory) / liabilities_current
 
 
 # --- Leverage --------------------------------------------------------------
 
 
 def debt_to_equity(liabilities: float, equity: float) -> float:
-    raise NotImplementedError
+    return liabilities / equity
 
 
 def interest_coverage(operating_income: float, interest_expense: float) -> float:
-    raise NotImplementedError
+    return operating_income / interest_expense
 
 
 def equity_multiplier(assets: float, equity: float) -> float:
@@ -62,18 +62,19 @@ def asset_turnover(revenue: float, assets: float) -> float:
 
 
 def free_cash_flow(cfo: float, capex: float) -> float:
-    raise NotImplementedError
+    return cfo - capex
 
 
 def fcf_margin(cfo: float, capex: float, revenue: float) -> float:
-    raise NotImplementedError
+    return free_cash_flow(cfo, capex) / revenue
 
 
 # --- Growth ----------------------------------------------------------------
 
 
 def yoy_growth(current: float, prior: float) -> float:
-    raise NotImplementedError
+    # abs keeps the sign right when prior is a loss
+    return (current - prior) / abs(prior)
 
 
 # --- DuPont ----------------------------------------------------------------
