@@ -39,13 +39,16 @@ Working today:
   the fiscal year it actually covers, and keeps one value per company, metric
   and period. `python -m src.parse` writes them to
   `data/processed/annual.parquet` (2,047 facts) and `quarterly.parquet` (5,717).
-- `net_margin()`, `asset_turnover()`, `equity_multiplier()`,
-  `return_on_equity()` and `dupont()` in `src/ratios.py`. `dupont()` splits ROE
-  into its three drivers, and the tests check that their product matches ROE
-  computed directly, including for a loss making company and one with negative
-  equity. On the latest year of all 10 cached filers the two agree to floating
-  point.
-- 67 tests passing.
+- The full ratio engine in `src/ratios.py`: margins, ROA, ROE, liquidity,
+  leverage, free cash flow margin, year over year growth and the DuPont
+  breakdown. `dupont()` splits ROE into its three drivers, and the tests check
+  that their product matches ROE computed directly, including for a loss making
+  company and one with negative equity.
+- `python -m src.ratios` writes `ratios.parquet` (one row per company and fiscal
+  year) and `peer_rank.parquet` (each ratio as a percentile within its peer set
+  and year). Rank 1.0 is the highest value in the group, not the best one: a
+  low debt to equity ranks low.
+- 96 tests passing.
 
 Not built yet:
 
@@ -53,8 +56,6 @@ Not built yet:
   year to date, so the quarterly table has them for Q1 and rarely after.
   Getting Q2 and Q3 means subtracting one year to date figure from the next.
   The annual table is complete, and the ratios run on annual numbers.
-- The rest of `src/ratios.py`: gross and operating margin, ROA, liquidity,
-  leverage, cash flow and growth ratios, and peer percentile rank.
 - `src/narrate.py`, the LLM layer.
 - `app/streamlit_app.py`, the dashboard.
 
@@ -102,6 +103,21 @@ every 10-Q tags year to date, so the parser checks the length of each period.
 internally comparable on purpose. Banks and insurers are deliberately excluded,
 because their statements use different `us-gaap` concepts and would quietly
 break the ratio engine rather than error out.
+
+**Fiscal years do not line up.** Home Depot calls the year ending February 2026
+its fiscal 2025 and Walmart calls the same stretch fiscal 2026, so ranking on
+the filer's own label would compare different periods. Peer ranks use
+`period_year`, the year of the period end minus three months, which puts a
+January year end in the calendar year before. It is an approximation: in the
+software set, Microsoft (June) and Oracle (May) are ranked against Salesforce
+(January) and ServiceNow (December) for the same `period_year`, up to eight
+months apart. A group with fewer than three companies gets no rank, which blanks
+2026 because only Microsoft and Oracle have reported it.
+
+**Negative equity blanks ROE.** Lowe's equity is negative in 8 of its
+fiscal years and Home Depot's in 3, and ROE on negative equity ranks a
+profitable company last. ROE, debt to equity and the equity multiplier are left
+empty for those years instead.
 
 **The LLM is not allowed to do arithmetic.** It receives a table of numbers the
 deterministic pipeline already computed and narrates those. Every figure in its
@@ -176,12 +192,8 @@ client does not coordinate rate limits across processes or threads.
 
 In rough order:
 
-1. Finish the ratio engine. The DuPont breakdown of ROE into net margin, asset
-   turnover and the equity multiplier is done, which is the part that answers
-   why one company's return beats another's. Margins, ROA, liquidity, leverage,
-   cash flow, growth and peer rank are not.
-2. Add the narration layer and its number verification.
-3. Put a Streamlit dashboard on top and deploy it.
+1. Add the narration layer and its number verification.
+2. Put a Streamlit dashboard on top and deploy it.
 
 ## License
 
